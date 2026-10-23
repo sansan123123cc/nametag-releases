@@ -1,0 +1,34 @@
+diff --git a/package.json b/package.json
+index 37accd1..dd421ae 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "nametag",
+   "productName": "이름표",
+-  "version": "4.0.8",
++  "version": "4.0.9",
+   "description": "이미지파일명편집기 v4 (설치형)",
+   "main": "src/main.js",
+   "author": "youjh",
+diff --git a/src/main.js b/src/main.js
+index 6ec9dd1..263f669 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -66,8 +66,15 @@ async function updCheck(quiet){ updQuiet=!!quiet;
+ function runBat(name){ if(!cfg.dataDir)return; const d=path.join(cfg.dataDir,'train'), b=path.join(d,name); if(!fs.existsSync(b)){ dialog.showMessageBoxSync(win,{type:'error',message:name+' 없음',detail:d}); return }
+   if(process.platform==='win32'){ spawn('cmd.exe',['/c','start','"이름표 학습"','/D',d,'cmd','/k',b],{detached:true,stdio:'ignore',windowsVerbatimArguments:true}).unref() } else { shell.openPath(d) } }
+ function builtinEditor(){ return app.isPackaged ? path.join(process.resourcesPath,'editor','editor.html') : path.join(__dirname,'..','editor','editor.html') }
++function editorMK(p){ try{ const m=fs.readFileSync(p,'utf8').match(/<title>[^<]*?v(\d+)\s*MK(\d+)/); return m?[+m[1],+m[2]]:null }catch(e){ return null } }
+ function editorPath(){
+-  if(cfg.dataDir){ const o = path.join(cfg.dataDir,'editor','editor.html'); if(fs.existsSync(o)) return o; }
++  if(cfg.dataDir){ const o = path.join(cfg.dataDir,'editor','editor.html');
++    if(fs.existsSync(o)){
++      /* 데이터 폴더에 넣어둔 편집기가 설치된 것보다 오래됐으면 자동으로 꺼둠 (자동 업데이트 뒤에 옛 편집기가 계속 뜨던 문제) */
++      const a=editorMK(o), b=editorMK(builtinEditor());
++      if(a&&b&&(b[0]>a[0]||(b[0]===a[0]&&b[1]>a[1]))){ try{ fs.renameSync(o,o.replace(/\.html$/,`.꺼둠_구버전MK${a[1]}_${Date.now()}.html`)); console.log('옛 편집기 override 꺼둠') }catch(e){ return o } }
++      else return o;
++    } }
+   return builtinEditor();
+ }
+ function editorInfo(){ const p=editorPath(); let mk=''; try{ const m=fs.readFileSync(p,'utf8').match(/<title>[^<]*?(v\d+\s*MK\d+[^<]*)<\/title>/); mk=m?m[1].trim():'' }catch(e){} return {path:p, override:p!==builtinEditor(), mk} }
