@@ -4,7 +4,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell, session } = require('electron');
 const fs = require('fs'); const path = require('path');
 
-const APP_VER = app.getVersion(), MK = 5;
+const APP_VER = app.getVersion(), MK = 6;
 const http = require('http');
 const { spawn } = require('child_process');
 const cfgPath = () => path.join(app.getPath('userData'), 'config.json');
