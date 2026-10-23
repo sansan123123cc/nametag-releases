@@ -1,0 +1,68 @@
+{
+  "name": "nametag",
+  "productName": "이름표",
+  "version": "4.0.7",
+  "description": "이미지파일명편집기 v4 (설치형)",
+  "main": "src/main.js",
+  "author": "youjh",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "kr.novelpia.nametag",
+    "productName": "이름표",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "editor",
+        "to": "editor"
+      },
+      {
+        "from": "train",
+        "to": "train"
+      },
+      {
+        "from": "infer",
+        "to": "infer"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "nametag-setup-${version}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "language": "1042",
+      "artifactName": "nametag-setup-${version}.${ext}"
+    },
+    "electronLanguages": [
+      "ko",
+      "en-US"
+    ],
+    "publish": [{"provider": "github", "owner": "sansan123123cc", "repo": "nametag-releases"}]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}
