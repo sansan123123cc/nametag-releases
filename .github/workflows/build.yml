@@ -1,0 +1,85 @@
+name: 이름표 빌드
+# 소스 묶음(*.tgz)이나 패치(patches/*.diff)가 올라오면 → 적용해서 커밋 → 윈도우 설치 파일 빌드 → 릴리스에 올림
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['README.md']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 소스 묶음 풀기 · 패치 적용
+        id: v
+        shell: bash
+        run: |
+          set -e
+          git config user.name nametag-bot
+          git config user.email nametag-bot@users.noreply.github.com
+          changed=0
+          if ls *.tgz >/dev/null 2>&1; then
+            for f in *.tgz; do
+              echo "소스 묶음 풀기: $f"
+              tar xzf "$f" --strip-components=1
+              git rm -q --cached "$f" || true
+              rm -f "$f"
+            done
+            printf 'node_modules/\ndist/\n__pycache__/\n' > .gitignore
+            git add -A
+            git commit -qm "소스 반영 (묶음 풀기)" || true
+            changed=1
+          fi
+          if ls patches/*.diff >/dev/null 2>&1; then
+            for f in $(ls patches/*.diff | sort -V); do
+              echo "패치 적용: $f"
+              git apply --whitespace=nowarn "$f"
+              git rm -q --cached "$f" || true
+              rm -f "$f"
+            done
+            git add -A
+            git commit -qm "패치 적용" || true
+            changed=1
+          fi
+          if [ "$changed" = 1 ]; then git push; fi
+          if [ -f package.json ]; then
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+          fi
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.version != ''
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 의존성
+        run: npm ci
+      - name: 윈도우 설치 파일 빌드
+        run: npx electron-builder --win nsis --x64 --publish never
+      - name: 릴리스에 올리기
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ needs.prepare.outputs.version }}"
+          ls -la dist
+          if gh release view "v$V" >/dev/null 2>&1; then
+            gh release upload "v$V" "dist/nametag-setup-$V.exe" "dist/nametag-setup-$V.exe.blockmap" dist/latest.yml --clobber
+          else
+            gh release create "v$V" "dist/nametag-setup-$V.exe" "dist/nametag-setup-$V.exe.blockmap" dist/latest.yml -t "이름표 $V" -n "자동 빌드 (GitHub Actions)"
+          fi
