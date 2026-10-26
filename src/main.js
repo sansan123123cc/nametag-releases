@@ -4,7 +4,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell, session } = require('electron');
 const fs = require('fs'); const path = require('path');
 
-const APP_VER = app.getVersion(), MK = 6;
+const APP_VER = app.getVersion(), MK = 7;
 const http = require('http');
 const { spawn } = require('child_process');
 const cfgPath = () => path.join(app.getPath('userData'), 'config.json');
@@ -146,6 +146,8 @@ function menu(){
       { type:'separator' },
       { label:'정밀 검수 서버 로그 열기', click:()=>{ if(cfg.dataDir){ const f=path.join(cfg.dataDir,'infer','server.log'); if(fs.existsSync(f))shell.openPath(f); else dialog.showMessageBoxSync(win,{message:'아직 로그 없음 (서버를 한 번도 안 켬)'}) } } },
       { label:'정밀 검수 서버 끄기', click:()=>pyStop() } ] },
+    { label:'도구', submenu:[
+      { label:'MP4 → 움직이는 WebP 변환…', click:()=>{ if(win)win.webContents.send('nametag:open-tool','webp') } } ] },
     { label:'보기', submenu:[ { role:'toggleDevTools', label:'개발자 도구' }, { role:'resetZoom', label:'확대 원래대로' }, { role:'zoomIn', label:'확대' }, { role:'zoomOut', label:'축소' } ] }
   ]; Menu.setApplicationMenu(Menu.buildFromTemplate(t));
 }

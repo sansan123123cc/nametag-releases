@@ -1,7 +1,7 @@
 {
   "name": "nametag",
   "productName": "이름표",
-  "version": "4.0.9",
+  "version": "4.0.10",
   "description": "이미지파일명편집기 v4 (설치형)",
   "main": "src/main.js",
   "author": "youjh",

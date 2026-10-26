@@ -75,4 +75,5 @@ window.nametag = { info:()=>ipcRenderer.invoke('nametag:info'), sync:NT_INFO, mo
   py:{ start:()=>ipcRenderer.invoke('nametag:py-start'), stop:()=>ipcRenderer.invoke('nametag:py-stop'), status:()=>ipcRenderer.invoke('nametag:py-status') },
   update:{ check:(q)=>ipcRenderer.invoke('nametag:update-check',!!q), state:()=>ipcRenderer.invoke('nametag:update-state'), on:(fn)=>ipcRenderer.on('nametag:update-state',(_,st)=>fn(st)) },
   openTrain:()=>ipcRenderer.invoke('nametag:open-train'),
+  onTool:(fn)=>ipcRenderer.on('nametag:open-tool',(_,t)=>fn(t)),
   get mode(){ try{ return new URLSearchParams(location.search).get('mode')||'' }catch(e){ return '' } } };
