@@ -4,7 +4,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell, session } = require('electron');
 const fs = require('fs'); const path = require('path');
 
-const APP_VER = app.getVersion(), MK = 7;
+const APP_VER = app.getVersion(), MK = 8;
 const http = require('http');
 const { spawn } = require('child_process');
 const cfgPath = () => path.join(app.getPath('userData'), 'config.json');
@@ -42,6 +42,40 @@ async function pyStart(){
 }
 async function pyStop(){ await pyGet('/quit',800); if(pyProc&&pyProc.exitCode===null){ setTimeout(()=>{ try{ pyProc.kill() }catch(e){} },1500) } return {ok:true} }
 app.on('before-quit',()=>{ if(pyProc&&pyProc.exitCode===null){ try{ pyProc.kill() }catch(e){} } });
+/* ---- MK8 클로드 연결: 127.0.0.1:17866 로 들어온 명령을 편집기 창(window.__api)에 전달 · mcp/nametag-mcp.js 가 클로드 데스크톱과 이 서버 사이를 잇는다 ---- */
+const CTL_PORT = () => cfg.ctlPort || 17866;
+const ctlWait = new Map(); let ctlSeq = 0;
+ipcMain.on('nametag:cmd-result', (e, m) => { const w = ctlWait.get(m.id); if (w) { ctlWait.delete(m.id); w(m) } });
+function ctlSend(cmd, args, timeoutMs) {
+  return new Promise(res => {
+    if (!win || win.isDestroyed()) return res({ ok: false, error: '편집기 창이 없다' });
+    const id = ++ctlSeq; const t = setTimeout(() => { ctlWait.delete(id); res({ ok: false, error: '시간 초과 (' + Math.round(timeoutMs / 1000) + '초)' }) }, timeoutMs || 600000);
+    ctlWait.set(id, m => { clearTimeout(t); res(m) }); win.webContents.send('nametag:cmd', { id, cmd, args });
+  });
+}
+function ctlStart() {
+  const srv = http.createServer((req, res) => {
+    const out = (code, obj) => { const b = Buffer.from(JSON.stringify(obj)); res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': b.length }); res.end(b) };
+    if (req.method === 'GET' && req.url.startsWith('/health')) return out(200, { ok: true, version: APP_VER, mk: MK, dataDir: cfg.dataDir || null, window: !!(win && !win.isDestroyed()) });
+    if (req.method === 'POST' && req.url.startsWith('/call')) { let body = ''; req.on('data', d => { body += d; if (body.length > 5e6) req.destroy() }); req.on('end', async () => { try { const m = JSON.parse(body || '{}'); if (win && win.isMinimized()) { } const r = await ctlSend(m.cmd, m.args || {}, m.timeoutMs); out(200, r) } catch (e) { out(400, { ok: false, error: String(e.message || e) }) } }); return }
+    out(404, { ok: false, error: 'no' });
+  });
+  srv.on('error', e => console.warn('ctl server', e.message)); srv.listen(CTL_PORT(), '127.0.0.1');
+}
+/* 클로드 데스크톱 설정 파일(claude_desktop_config.json)에 이 앱의 MCP 서버를 등록 */
+function mcpScriptPath() { return app.isPackaged ? path.join(process.resourcesPath, 'mcp', 'nametag-mcp.js') : path.join(__dirname, '..', 'mcp', 'nametag-mcp.js') }
+function mcpEntry() { return { command: process.execPath, args: [mcpScriptPath()], env: { ELECTRON_RUN_AS_NODE: '1' } } }
+function claudeConfigPath() { return process.platform === 'win32' ? path.join(process.env.APPDATA || app.getPath('appData'), 'Claude', 'claude_desktop_config.json') : path.join(app.getPath('appData'), 'Claude', 'claude_desktop_config.json') }
+function mcpInstall() {
+  const f = claudeConfigPath(); let cfgJ = {};
+  try { cfgJ = JSON.parse(fs.readFileSync(f, 'utf8')) } catch (e) { if (fs.existsSync(f)) { dialog.showMessageBoxSync(win, { type: 'error', message: '클로드 설정 파일을 못 읽었다', detail: f + '\n' + e.message }); return } }
+  cfgJ.mcpServers = cfgJ.mcpServers || {}; cfgJ.mcpServers['nametag'] = mcpEntry();
+  try { fs.mkdirSync(path.dirname(f), { recursive: true }); if (fs.existsSync(f)) fs.copyFileSync(f, f + '.이름표백업_' + Date.now()); fs.writeFileSync(f, JSON.stringify(cfgJ, null, 2)) }
+  catch (e) { dialog.showMessageBoxSync(win, { type: 'error', message: '설정 파일을 못 썼다', detail: f + '\n' + e.message }); return }
+  dialog.showMessageBoxSync(win, { message: '클로드 데스크톱에 "nametag" 연결을 등록했다', detail: `설정 파일: ${f}\n\n이제 클로드 데스크톱 앱을 완전히 종료(트레이 아이콘 → 종료)했다가 다시 켜라.\n그 뒤 클로드 대화에서 "이름표로 D:\\작품 폴더 열어서 nsfw 전부 검수해줘" 처럼 시키면 된다.\n(이름표 앱이 꺼져 있으면 클로드가 알아서 켠다)` });
+}
+function mcpShowConfig() { const j = JSON.stringify({ mcpServers: { nametag: mcpEntry() } }, null, 2); dialog.showMessageBoxSync(win, { message: '클로드 데스크톱 설정에 넣을 내용', detail: j + '\n\n파일: ' + claudeConfigPath() }) }
+
 /* ---- MK5 자동 업데이트 (GitHub Releases) · 저장소는 데이터폴더\update\업데이트주소.txt 에 "owner/repo" 한 줄 ---- */
 const UPD_DEFAULT={owner:'sansan123123cc',repo:'nametag-releases'};                     /* 기본 저장소 (사용자 GitHub) · 업데이트주소.txt 에 적으면 그게 우선 */
 function updRepo(){ try{ const t=fs.readFileSync(path.join(cfg.dataDir,'update','업데이트주소.txt'),'utf8'); const m=t.replace(/^#.*$/mg,'').match(/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/); if(m)return {owner:m[1],repo:m[2]} }catch(e){} return UPD_DEFAULT }
@@ -147,7 +181,10 @@ function menu(){
       { label:'정밀 검수 서버 로그 열기', click:()=>{ if(cfg.dataDir){ const f=path.join(cfg.dataDir,'infer','server.log'); if(fs.existsSync(f))shell.openPath(f); else dialog.showMessageBoxSync(win,{message:'아직 로그 없음 (서버를 한 번도 안 켬)'}) } } },
       { label:'정밀 검수 서버 끄기', click:()=>pyStop() } ] },
     { label:'도구', submenu:[
-      { label:'MP4 → 움직이는 WebP 변환…', click:()=>{ if(win)win.webContents.send('nametag:open-tool','webp') } } ] },
+      { label:'MP4 → 움직이는 WebP 변환…', click:()=>{ if(win)win.webContents.send('nametag:open-tool','webp') } },
+      { type:'separator' },
+      { label:'클로드 데스크톱에 연결 등록 (MCP)', click:()=>mcpInstall() },
+      { label:'연결 설정 내용 보기', click:()=>mcpShowConfig() } ] },
     { label:'보기', submenu:[ { role:'toggleDevTools', label:'개발자 도구' }, { role:'resetZoom', label:'확대 원래대로' }, { role:'zoomIn', label:'확대' }, { role:'zoomOut', label:'축소' } ] }
   ]; Menu.setApplicationMenu(Menu.buildFromTemplate(t));
 }
@@ -172,7 +209,7 @@ app.whenReady().then(async()=>{
     dialog.showMessageBoxSync({type:'info',message:'처음 켰다 · 데이터 폴더를 고르자',detail:'모델·보관함·백업·학습 자료가 들어갈 폴더다. 설치 폴더 밖, 넉넉한 드라이브(D: 등)에 새 폴더를 만들어 고르면 된다.\n업데이트해도 이 폴더는 안 건드린다.'});
     let d=null; while(!d){ d=await pickDataDir(null); if(!d && dialog.showMessageBoxSync({type:'question',buttons:['다시 고르기','끝내기'],message:'데이터 폴더가 있어야 시작할 수 있다'})===1){ app.quit(); return } }
   } else ensureData(cfg.dataDir);
-  const up=checkUpdateFolder(); menu(); createWindow();
+  const up=checkUpdateFolder(); menu(); createWindow(); ctlStart();
   if(up) win.webContents.once('did-finish-load',()=>dialog.showMessageBox(win,{message:`업데이트 파일 적용함: ${up}`}));
   if(app.isPackaged&&!process.env.NAMETAG_DATA) setTimeout(()=>updCheck(true),6000);          /* 저장소가 정해져 있으면 켤 때 조용히 확인 */
 });
