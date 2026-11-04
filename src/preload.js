@@ -78,3 +78,14 @@ window.nametag = { info:()=>ipcRenderer.invoke('nametag:info'), sync:NT_INFO, mo
   onTool:(fn)=>ipcRenderer.on('nametag:open-tool',(_,t)=>fn(t)),
   onCmd:(fn)=>ipcRenderer.on('nametag:cmd',async(_,m)=>{ try{ const r=await fn(m.cmd,m.args); ipcRenderer.send('nametag:cmd-result',{id:m.id,ok:true,result:r===undefined?null:JSON.parse(JSON.stringify(r))}) }catch(e){ ipcRenderer.send('nametag:cmd-result',{id:m.id,ok:false,error:String(e&&e.message||e)}) } }),
   get mode(){ try{ return new URLSearchParams(location.search).get('mode')||'' }catch(e){ return '' } } };
+
+/* 펫이 넘긴 폴더 열기 (main → 'nametag:open-path') — 폴더를 창에 끌어다 놓은 것과 똑같이 */
+ipcRenderer.on('nametag:open-path', async (e, p) => {
+  try {
+    for (let i = 0; i < 100 && !(window.dropCore && window.fsRun); i++) await new Promise(r => setTimeout(r, 100));
+    if (!p || !window.dropCore || !window.fsRun) return;
+    const h = new NDirHandle(p);
+    const its = [{ kind: 'file', getAsFileSystemHandle: () => Promise.resolve(h) }];
+    window.fsRun('폴더 읽기', () => window.dropCore(its, [Promise.resolve(h)], []));
+  } catch (err) { console.error(err) }
+});

@@ -129,6 +129,7 @@ function createWindow(){
     webPreferences:{ preload:path.join(__dirname,'preload.js'), contextIsolation:false, nodeIntegration:false, sandbox:false, webSecurity:false } });
   win.webContents.setWindowOpenHandler(({url})=>{ if(/^https?:/.test(url)) shell.openExternal(url); return {action:'deny'} });
   win.loadFile(editorPath());
+  win.webContents.once('did-finish-load',()=>{ if(pendingOpen){ const p=pendingOpen; pendingOpen=null; setTimeout(()=>sendOpen(p),800) } });
   win.on('closed',()=>{ win=null });
 }
 let trainWin=null;
@@ -201,6 +202,34 @@ ipcMain.handle('nametag:update-check', async(e,quiet)=>updCheck(!!quiet));
 ipcMain.handle('nametag:update-state', async()=>({...updState,repo:updRepo()}));
 ipcMain.handle('nametag:open-train', async()=>{ openTrainWindow(); return true });
 ipcMain.handle('nametag:pick-save', async(e,name)=>{ const r=await dialog.showSaveDialog(win,{defaultPath:name||undefined}); return r.canceled?null:r.filePath });
+
+/* 펫이 넘긴 폴더 열기: nametag.exe "<폴더 또는 사진>" → 그 폴더를 끌어다 놓은 것처럼 연다.
+   이미 켜져 있으면 새 창 대신 켜져 있는 창에서 연다 */
+function argPath(argv){
+  for(const a of (argv||[]).slice(app.isPackaged?1:2)){
+    if(!a||a.startsWith('-'))continue;
+    try{
+      const p=path.resolve(a); if(!fs.existsSync(p))continue;
+      const st=fs.statSync(p);
+      if(st.isDirectory())return p;
+      if(st.isFile()&&/\.(png|jpe?g|webp|gif|bmp|mp4|m4v|mov|webm)$/i.test(p))return path.dirname(p);
+    }catch(_){}
+  }
+  return null;
+}
+let pendingOpen=argPath(process.argv);
+function sendOpen(p){
+  if(!p)return;
+  if(win&&!win.isDestroyed()){
+    const go=()=>{ try{ win.webContents.send('nametag:open-path',p) }catch(_){} };
+    if(win.webContents.isLoading())win.webContents.once('did-finish-load',()=>setTimeout(go,800)); else go();
+  } else pendingOpen=p;
+}
+if(!app.requestSingleInstanceLock()){ app.exit(0) }
+else app.on('second-instance',(e,argv)=>{
+  if(win&&!win.isDestroyed()){ if(win.isMinimized())win.restore(); win.show(); win.focus() }
+  sendOpen(argPath(argv));
+});
 
 app.whenReady().then(async()=>{
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb)=>cb(true));          /* 폴더 접근·클립보드 등 묻지 않음 */
